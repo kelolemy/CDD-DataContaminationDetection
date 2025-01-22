@@ -2,3 +2,4 @@ __pycache__
 templates/*
 old_f
 benchmark_results/*
+config.py
