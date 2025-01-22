@@ -1,0 +1,4 @@
+__pycache__
+templates/*
+old_f
+benchmark_results/*

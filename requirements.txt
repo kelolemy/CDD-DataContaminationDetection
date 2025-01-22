@@ -1,0 +1,4 @@
+python-dotenv
+nltk
+datasets
+chromadb

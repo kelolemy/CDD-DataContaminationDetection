@@ -1,0 +1,20 @@
+# ----------------------------------------------------------------------
+# CONFIGURATION: Adjust these as needed
+# ----------------------------------------------------------------------
+DATA_INPUT_MODE = "datasets"        # SET TO "datasets", "strings", OR "dicts"
+
+DATASET_NAME        = "gsm8k"
+CONFIG_SPLIT        = "main"
+SUBDATASET_TO_USE   = "test"
+PROMPT_KEY          = "question"
+ANSWER_KEY          = "answer"
+
+# CONFIG OPTIONS
+MODEL_NAME          = "gpt-4o"     # Model in test
+DISTANCE_MODE       = "edit"       # or "embeddings"
+SIM_THRESHOLD       = 0.05         # fraction of token/embeddings similarity cutoff
+TEMPERATURE         = 0.7          # sampling temperature for LLM
+NUM_SAMPLES         = 5            # how many outputs to sample (5 - 20)
+CONTAM_THRESH       = 0.2          # if peakedness > this => "contaminated"
+GREEDY_0_TEMP       = False        # Gets 0.0 temperature response from LLM, use it as reference
+# ----------------------------------------------------------------------
