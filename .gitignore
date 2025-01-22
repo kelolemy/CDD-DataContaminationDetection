@@ -3,3 +3,4 @@ templates/*
 old_f
 benchmark_results/*
 config.py
+.env
