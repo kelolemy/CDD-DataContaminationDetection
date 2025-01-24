@@ -317,7 +317,6 @@ def compute_peakedness(outputs, threshold=0.05, mode="edit", greedy_0=False, tok
             cutoff = threshold * len_greedy
             if ed <= cutoff:
                 near_count += 1
-            print(ed, cutoff)
 
         peakedness_value = near_count / denom
         similarity_avg = edit_distances / denom
