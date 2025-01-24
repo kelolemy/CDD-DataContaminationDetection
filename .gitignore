@@ -4,3 +4,6 @@ old_f
 benchmark_results/*
 config.py
 .env
+testing_parameters
+chromas
+logs

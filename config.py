@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 EMBEDDINGS_OPENAI_API_KEY=os.getenv('EMBEDDINGS_OPENAI_API_KEY')
