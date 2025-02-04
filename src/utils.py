@@ -1,4 +1,5 @@
 import json
+import time
 import re
 import logging
 import nltk
@@ -9,7 +10,7 @@ import chromadb.utils.embedding_functions as embedding_functions
 from datasets import load_dataset
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from config import EMBEDDINGS_OPENAI_API_KEY, CHROMADB_IP, CHROMADB_PORT
+from config import EMBEDDINGS_OPENAI_API_KEY, CHROMADB_IP, CHROMADB_PORT, HF_TOKEN
 
 ##############################################################################
 # 1. API CALLS
@@ -19,25 +20,25 @@ from config import EMBEDDINGS_OPENAI_API_KEY, CHROMADB_IP, CHROMADB_PORT
 from LLMS_APIS.gpt4o import call_gpt4o as call_api
 # from LLMS_APIS.gpt35 import call_gpt35 as call_api
 
-def call_api_wrapper(prompt, temperature=0.7, n=1):
+def call_api_wrapper(prompt, image=None, temperature=0.7, n=1):
     """
     Wraps the call_api function to request multiple outputs concurrently.
     """
     # with ThreadPoolExecutor(max_workers=min(n, 2)) as executor:
     with ThreadPoolExecutor(max_workers=min(n, 20)) as executor:
-        futures = [executor.submit(call_api, prompt, temperature) for _ in range(n)]
+        futures = [executor.submit(call_api, prompt, image, temperature) for _ in range(n)]
         outputs = [f.result() for f in futures]
     return outputs
 
-def call_llm_get_greedy(prompt):
-    return call_api(prompt, temperature=0.0)
+def call_llm_get_greedy(prompt, image):
+    return call_api(prompt, image, temperature=0.0)
 
 ##############################################################################
 # 2. LOAD DATASET
 ##############################################################################
 
 def prepare_dataset(dataset_name, config_split=None, dataset_to_use=None,
-                    prompt_key=None, answer_key=None):
+                    prompt_key=None, answer_key=None, image_key=None):
     """
     Prepares a dataset for further processing by loading and returning the specified split,
     along with the keys for prompt and answer fields.
@@ -66,9 +67,9 @@ def prepare_dataset(dataset_name, config_split=None, dataset_to_use=None,
     """
     try:
         if config_split:
-            ds = load_dataset(dataset_name, config_split)
+            ds = load_dataset(dataset_name, config_split, )#use_auth_token=HF_TOKEN)
         else:
-            ds = load_dataset(dataset_name)
+            ds = load_dataset(dataset_name, )#use_auth_token=HF_TOKEN)
     except ValueError as e:
         logging.warning(e)
         config = input("Please choose from available configs: ")
@@ -83,8 +84,9 @@ def prepare_dataset(dataset_name, config_split=None, dataset_to_use=None,
         adj_f_row = {}
         keys_per_item = []
         for f in feature_cols:
-            keys_per_item.append(f)
-            adj_f_row[f] = re.sub(r' +', ' ', first_row_data[f].replace('\n', ' ').replace('\t', ' ').replace('\r', ' '))[:100]
+            if f and isinstance(f, str) and first_row_data.get(f) and isinstance(first_row_data.get(f), str):
+                keys_per_item.append(f)
+                adj_f_row[f] = re.sub(r' +', ' ', first_row_data[f].replace('\n', ' ').replace('\t', ' ').replace('\r', ' '))[:100]
         prompt_keys[key] = keys_per_item
         result_dict = {
             "feature_columns": feature_cols,
@@ -104,10 +106,23 @@ def prepare_dataset(dataset_name, config_split=None, dataset_to_use=None,
     if len(prompt_keys) == 1:
         prompt_key = prompt_keys[0]
     else:
+        if not prompt_key:
+            prompt_key = ""
         while prompt_key.strip() not in prompt_keys:
             print("Invalid Option! ", end="")
             logging.warning(f"Invalid or empty prompt_key: {prompt_key}")
             prompt_key = input(f"Please choose the prompt key to use: {list(prompt_keys)}: ")
+    if len(prompt_keys) == 1:
+        image_key = None
+    else:
+        if not image_key:
+            image_key = ""
+        while image_key.strip() not in prompt_keys:
+            if image_key == "":
+                break
+            print("Invalid Option! ", end="")
+            logging.warning(f"Invalid or empty image_key: {image_key}")
+            image_key = input(f"Please choose the image key to use: {list(prompt_keys)}: ")
     if len(prompt_keys) == 1:
         answer_key = None
     else:
@@ -117,7 +132,7 @@ def prepare_dataset(dataset_name, config_split=None, dataset_to_use=None,
             print("Invalid Option! ", end="")
             logging.warning(f"Invalid or empty answer_key: {answer_key}")
             answer_key = input(f"Please choose the answer key to use: {list(prompt_keys)} [Leave empty if none]: ")
-    return ds[dataset_to_use], prompt_key, answer_key
+    return ds[dataset_to_use], prompt_key, answer_key, image_key
 
 ##############################################################################
 # 3. TEXT CLEANING / PREPROCESSING
@@ -229,10 +244,14 @@ def delete_chroma_collection(collection_name, client):
     client.delete_collection(name=collection_name)
 
 def answers_get_distance(chroma_collection, answer_to_check):
-    distance = chroma_collection.query(query_texts=[answer_to_check], n_results=1)
-    # num_of_q = chroma_collection.count()
-    # chroma_collection.add(documents=[answer_to_check], ids=[f"id{num_of_q + 1}"])
-    return distance['distances'][0][0]
+    try:
+        distance = chroma_collection.query(query_texts=[answer_to_check], n_results=1)
+        # num_of_q = chroma_collection.count()
+        # chroma_collection.add(documents=[answer_to_check], ids=[f"id{num_of_q + 1}"])
+        return distance['distances'][0][0]
+    except Exception as e:
+        time.sleep(0.5)
+        return answers_get_distance(chroma_collection, answer_to_check)
 
 def assign_similarity_threshold(greedy_answer, distance_type="edit", tokenizer=None):
     """

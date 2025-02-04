@@ -32,6 +32,12 @@ def caller():
     NUMBER_OF_ENTRIES   = 100             # The number of entries to benchmark the model.
     GREEDY_0_TEMP       = False         # Gets 0.0 temperature response from LLM, use it as reference
     ENFORCE_GREEDY      = False         # Forces to use GREEDY_0_TEMP answer, even when there's answer provided in benchmark.
+    BENCHMARK_CODE      = False         # "code", "text", "none": skip cleaning
+    TOKENIZER_MODE      = 0             # 0: transformers.AutoTokenizer, 1: tiktoken, 2: nltk
+    TOKENIZER_NAME      = ""            # if TOKENIZER_MODE == 0 | 1, give model_name, else None
+    EDIT_DP_OR_LEV      = "dp"          # For DISTANCE_MODE == "edit"; 
+                                        #   "dp": dynamic programming edit distance, "lev": levenshtein edit distance,
+                                        # Set to None, if DISTANCE_MODE == "embeddings".
     # -----------------------------------------------------------------------------------
     
     
@@ -54,7 +60,8 @@ def caller():
             "ANSWER_KEY": D_ANSWER_KEY
         }
     else:
-        raise ValueError("DATA_INPUT_MODE needs to be in [\"strings\", \"jsons\", \"datasets\"]")
+        raise ValueError('DATA_INPUT_MODE must be "strings", "jsons", or "datasets"')
+
     main_conf = {
         "MODEL_NAME": MODEL_NAME,
         "DISTANCE_MODE": DISTANCE_MODE,
@@ -64,7 +71,11 @@ def caller():
         "CONTAM_THRESH": CONTAM_THRESH,
         "GREEDY_0_TEMP": GREEDY_0_TEMP,
         "NUMBER_OF_ENTRIES": NUMBER_OF_ENTRIES,
-        "ENFORCE_GREEDY": ENFORCE_GREEDY
+        "ENFORCE_GREEDY": ENFORCE_GREEDY,
+        "BENCHMARK_CODE": BENCHMARK_CODE,
+        "TOKENIZER_MODE": TOKENIZER_MODE,
+        "TOKENIZER_NAME": TOKENIZER_NAME,
+        "EDIT_DP_OR_LEV": EDIT_DP_OR_LEV
     }
     # -------------------------------- Don't Touch - END --------------------------------
     

@@ -39,8 +39,8 @@ def main(input_mode, input_conf, main_conf):
     class ExcludeHttpRequestsFilter(logging.Filter):
         def filter(self, record):
             # Exclude logs that contain "HTTP Request"
-            exclude_keys = ["HTTP Request", "Giving up send_request", "Backing off send_request"]
-            # exclude_keys = ["ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ ZEPIiiiiiiiiiiiiiiiiiiiiiiiii"]
+            # exclude_keys = ["HTTP Request", "Giving up send_request", "Backing off send_request"]
+            exclude_keys = ["Nigga man that's bullshit"]
             exclude_cond = not bool([i for i in exclude_keys if i in record.getMessage()])
             return exclude_cond
 
@@ -58,6 +58,7 @@ def main(input_mode, input_conf, main_conf):
     SUBDATASET_TO_USE       = input_conf.get('SUBDATASET_TO_USE')
     PROMPT_KEY              = input_conf.get('PROMPT_KEY')
     ANSWER_KEY              = input_conf.get('ANSWER_KEY')
+    IMAGE_KEY              = input_conf.get('IMAGE_KEY')
     BENCHMARK_LOC           = input_conf.get('BENCHMARK_LOC')
 
     MODEL_NAME              = main_conf.get('MODEL_NAME')
@@ -98,14 +99,16 @@ def main(input_mode, input_conf, main_conf):
             CONFIG_SPLIT, 
             SUBDATASET_TO_USE, 
             PROMPT_KEY, 
-            ANSWER_KEY
+            ANSWER_KEY,
+            IMAGE_KEY
         )
-        benchmark, PROMPT_KEY, ANSWER_KEY = ds_data
+        benchmark, PROMPT_KEY, ANSWER_KEY, IMAGE_KEY = ds_data
     else:
         with open(BENCHMARK_LOC, "r", encoding="utf-8") as f:
             benchmark = json.load(f)
 
     contamination_results = []
+    outputs_json = []
     if NUMBER_OF_ENTRIES == 0:
         NUMBER_OF_ENTRIES = len(benchmark)
     elif NUMBER_OF_ENTRIES == -1:
@@ -129,17 +132,25 @@ def main(input_mode, input_conf, main_conf):
         else:
             prompt = strip_and_truncate(item[PROMPT_KEY], BENCHMARK_CODE)
             greedy_output = item.get(ANSWER_KEY, None)
+            include_image = item.get(IMAGE_KEY)
         
         # B. Possibly get a greedy_0 output or ENFORCE_GREEDY
         if (not greedy_output and GREEDY_0_TEMP) or ENFORCE_GREEDY:
-            greedy_output = call_llm_get_greedy(prompt)
-
+            greedy_output = call_llm_get_greedy(prompt, include_image)
+        import re
+        if len(greedy_output) < 5 or (len(greedy_output) == (len(re.sub(r'\D', '', greedy_output)) + greedy_output.count('.'))):
+            continue
+            
         # FOR NOW! TO BE UPDATED.
         tokenizer = generate_tokenizer(TOKENIZER_NAME, TOKENIZER_MODE)
         if SIM_THRESHOLD == 0:
             SIM_THRESHOLD = assign_similarity_threshold(greedy_output, DISTANCE_MODE, tokenizer)
         # C. Call LLM multiple times
-        outputs = call_api_wrapper(prompt, temperature=TEMPERATURE, n=NUM_SAMPLES)
+        
+        # ONLINE MODE START
+        outputs = call_api_wrapper(prompt, include_image, temperature=TEMPERATURE, n=NUM_SAMPLES)
+        # ONLINE MODE  END
+        
         # D. Compute peakedness
         peakedness_value, similarity_distance = compute_peakedness(
             outputs, 
@@ -163,7 +174,7 @@ def main(input_mode, input_conf, main_conf):
         if DISTANCE_MODE == "embeddings" and is_contaminated:
             processed_row = {
                 "index": idx,
-                "task_id": item['task_id'],
+                # "task_id": item['id'],
                 "prompt": prompt[:60] + ("..." if len(prompt) > 60 else ""),
                 "similarity_distance": similarity_distance,
                 "peakedness": peakedness_value,
@@ -173,13 +184,19 @@ def main(input_mode, input_conf, main_conf):
         else:
             processed_row = {
                 "index": idx,
-                "task_id": item['task_id'],
+                # "task_id": item['id'],
                 "prompt": prompt[:60] + ("..." if len(prompt) > 60 else ""),
                 "peakedness": peakedness_value,
                 "is_contaminated": is_contaminated,
                 "contamination_severity": case_
             }
         contamination_results.append(processed_row)
+        processed_row['outputs'] = outputs
+        processed_row['prompt'] = prompt
+        processed_row['correct_answer'] = greedy_output
+        # processed_row['answer_type'] = item['answer_type']
+        processed_row['include_image'] = bool(include_image)
+        outputs_json.append(processed_row)
 
     # 9. Summaries
     contaminated_count = sum(1 for r in contamination_results if r['is_contaminated'])
@@ -195,7 +212,7 @@ def main(input_mode, input_conf, main_conf):
 
     # 11. Save final report
     fname = datetime.now().strftime("%Y-%m-%d_%H-%M-%S").replace('-', '')
-    RESULTS_F_LOC = f"benchmark_results/{MODEL_NAME}_{fname}.json"
+    RESULTS_F_LOC = f"benchmark_results/{MODEL_NAME}_{DISTANCE_MODE[:5]}_{f'{EDIT_DP_OR_LEV}_' if EDIT_DP_OR_LEV else ''}{fname}.json"
     
     full_report = {
         "Settings": {
@@ -209,7 +226,9 @@ def main(input_mode, input_conf, main_conf):
 
     with open(RESULTS_F_LOC, "w", encoding="utf-8") as f:
         json.dump(full_report, f, indent=2, ensure_ascii=False)
-    
+    RESULTS_F_LOC = f"benchmark_results/answers/{MODEL_NAME}_{DISTANCE_MODE[:5]}_{f'{EDIT_DP_OR_LEV}_' if EDIT_DP_OR_LEV else ''}{fname}.json"
+    with open(RESULTS_F_LOC, "w", encoding="utf-8") as f:
+        json.dump(outputs_json, f, indent=2, ensure_ascii=False)
     logging.info(f"Report saved to {RESULTS_F_LOC}")
 
 
